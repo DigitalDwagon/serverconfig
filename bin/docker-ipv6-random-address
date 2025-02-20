@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+
+# This script takes a docker network name,
+# and spits out a random IPv6 address in that range
+# that can be assigned to a container.
+import subprocess
+import json
+import ipaddress
+import random
+import sys
+
+def get_docker_network_info(network_name):
+    try:
+        result = subprocess.run([
+            "docker", "network", "inspect", network_name
+        ], capture_output=True, text=True, check=True)
+        networks = json.loads(result.stdout)
+        return networks[0] if networks else None
+    except subprocess.CalledProcessError as e:
+        print(f"Error fetching network details: {e}")
+        return None
+
+def get_used_ipv6_addresses(network_info):
+    used_ips = set()
+    for container in network_info.get("Containers", {}).values():
+        ip6 = container.get("IPv6Address")
+        if ip6:
+            used_ips.add(ip6.split("/")[0])
+    return used_ips
+
+def generate_random_ipv6(subnet, used_ips):
+    network = ipaddress.IPv6Network(subnet, strict=False)
+    while True:
+        random_ip = network.network_address + random.randint(1, network.num_addresses - 2)
+        if str(random_ip) not in used_ips:
+            return str(random_ip)
+
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: python script.py <docker_network_name>")
+        sys.exit(1)
+    
+    network_name = sys.argv[1]
+    network_info = get_docker_network_info(network_name)
+    if not network_info:
+        print("Failed to retrieve network info.")
+        sys.exit(1)
+    
+    ipam_config = network_info.get("IPAM", {}).get("Config", [])
+    ipv6_subnet = next((cfg["Subnet"] for cfg in ipam_config if ":" in cfg.get("Subnet", "")), None)
+    if not ipv6_subnet:
+        print("No IPv6 subnet found in network.")
+        sys.exit(1)
+    
+    used_ips = get_used_ipv6_addresses(network_info)
+    random_ipv6 = generate_random_ipv6(ipv6_subnet, used_ips)
+    print(random_ipv6)
+
+if __name__ == "__main__":
+    main()
