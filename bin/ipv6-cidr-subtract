@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+
+# This script takes an IPv6 address range and removes a certain block from it
+# with the representation given in the fewest possible CIDR blocks.
+# e.g. "I want to use all of these addresses but save the first /70 for the host system"
+import argparse
+from ipaddress import IPv6Network
+
+def exclude_cidr_range(base_cidr: str, exclude_cidr: str):
+    base_network = IPv6Network(base_cidr, strict=False)
+    exclude_network = IPv6Network(exclude_cidr, strict=False)
+    
+    # Ensure the exclude range is within the base range
+    if not (exclude_network.network_address >= base_network.network_address and 
+            exclude_network.broadcast_address <= base_network.broadcast_address):
+        raise ValueError("Exclude range is not fully contained within base range")
+    
+    remaining_ranges = base_network.address_exclude(exclude_network)
+    
+    return [str(net) for net in remaining_ranges]
+
+def main():
+    parser = argparse.ArgumentParser(description="Subtract an IPv6 CIDR range from another.")
+    parser.add_argument("--base", help="The base IPv6 CIDR block")
+    parser.add_argument("--subtract", help="The IPv6 CIDR block to exclude")
+    
+    args = parser.parse_args()
+    
+    result = exclude_cidr_range(args.base, args.subtract)
+    print("Remaining CIDR blocks:")
+    for cidr in result:
+        print(cidr)
+
+if __name__ == "__main__":
+    main()
